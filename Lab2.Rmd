@@ -1,0 +1,89 @@
+---
+title: "Lab 2"
+author: "Aiden, Emily"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+The main goal is to apply the Bradley-Terry model on a dataset from the sport of your choice (preferably something current vs. historical data). This does NOT have to match your team sport.
+
+The main challenge will be converting your data into the correct format for running the model. Be sure to document your process as it will likely differ depending on your dataset.
+
+After you fit your model, report a ranking of the top teams in the league. Does the ordering make sense to you?
+
+Pick an upcoming or hypothetical game of interest to you and use your model to predict the outcome of the game. Does the prediction make sense to you?
+
+Create a data visualization that tells a story about some aspect of your results.
+
+Finally, critique your model. For example, some questions you could consider addressing include: Why might this model be an inadequate representation of reality? What decision in sport management might be affected by this analysis? How might this analysis change the way fans think about the sport?
+
+```{r}
+library(tidyverse)
+library(ISAR)
+
+head(nba_games_2023)
+```
+
+## Preparing the Data
+
+```{r}
+cleaning <- nba_games_2023 |>
+  select(plus_minus, game_id, matchup, team_abbreviation)
+
+# remove rows that contain the string "vs." in the column matchup
+cleaning <- cleaning |>
+  filter(!grepl("vs.", matchup))
+
+# make home and away team columns
+# split the matchup column on before the character "@" 
+game_nba_clean <- cleaning |>
+  mutate(home_team = str_extract(matchup, "(?<=@ ).*")) |>
+  mutate(away_team = team_abbreviation) |>
+  select(plus_minus, home_team, away_team) |>
+  mutate(plus_minus = -plus_minus)
+
+head(game_nba_clean)
+```
+
+## Making the Design Matrix
+```{r}
+team_matrix_home <- model.matrix(~ home_team, data = game_nba_clean)
+team_matrix_away <- model.matrix(~ away_team, data = game_nba_clean)
+team_matrix <- team_matrix_home - team_matrix_away 
+
+team_data <- as.data.frame(team_matrix[, -1])     
+names(team_data) <- sort(unique(game_nba_clean$home_team))[-1]
+team_data
+```
+
+## Fitting the Model
+```{r}
+linear_model <- lm(game_nba_clean$plus_minus ~ ., data = team_data)               
+summary(linear_model)
+```
+
+## Ranking the Teams
+```{r}
+# saving the coefficients and corresponding estimates
+team_ranking <- data.frame(
+  estimate = coef(linear_model)
+)
+
+team_ranking <- team_ranking |> 
+  slice(-1) |> # remove intercept
+  arrange(desc(estimate)) 
+
+print(team_ranking)
+```
+
+## Predicting the Outcome of a Game
+```{r}
+
+```
+
+## visualization
+```{r}
+
+```
+
+## Model Critique
