@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 output: word_document
 ---
 
-The main goal is to apply the Bradley-Terry model on a dataset from the sport of your choice (preferably something current vs. historical data). This does NOT have to match your team sport.
+<!-- The main goal is to apply the Bradley-Terry model on a dataset from the sport of your choice (preferably something current vs. historical data). This does NOT have to match your team sport. -->
 
 The main challenge will be converting your data into the correct format for running the model. Be sure to document your process as it will likely differ depending on your dataset.
 
@@ -20,6 +20,7 @@ Finally, critique your model. For example, some questions you could consider add
 ```{r}
 library(tidyverse)
 library(ISAR)
+library(broom)
 
 head(nba_games_2023)
 ```
@@ -64,26 +65,80 @@ summary(linear_model)
 
 ## Ranking the Teams
 ```{r}
-# saving the coefficients and corresponding estimates
-team_ranking <- data.frame(
-  estimate = coef(linear_model)
-)
+team_ranking <- tidy(linear_model)
 
-team_ranking <- team_ranking |> 
-  slice(-1) |> # remove intercept
-  arrange(desc(estimate)) 
+# Remove the intercept and sort by estimate
+team_ranking <- tidy(linear_model) |>
+  filter(term != "(Intercept)") |>
+  mutate(
+    team = term,
+    estimate = round(estimate, 2)
+  ) |>
+  arrange(desc(estimate)) |>
+  select(team, estimate)
 
-print(team_ranking)
+# View the full ranking
+print(team_ranking, n = Inf)
+
 ```
 
 ## Predicting the Outcome of a Game
+
 ```{r}
+
+log_model <- lm(game_nba_clean$plus_minus > 0 ~ ., data = team_data, family = binomial())               
+summary(log_model)
 
 ```
 
-## visualization
-```{r}
+Now with the logistic model, in order to predict a team's probability of winning, we can utilize the model equation:
 
+$y_i = \beta_0 + \beta_{hi} - \beta_{ai}$
+
+Where $y_i$ is a teams probability of winning,
+
+$\beta_0$ is the intercept,
+
+$\beta_{hi}$ is the home team's predicted strength, and
+
+$\beta_{ai}$ is the away team's predicted strength.
+
+To be specific, we can predict Game 5 of the Knicks vs. Celtics series, a highly anticipated and possible series end. Game 5 is in Boston, so the Celtics are at home:
+
+```{r}
+0.580488 + coef(log_model)["BOS"] - coef(log_model)["NYK"]
+```
+
+And we see that with the Bradley-Terry logistic model, the Celtics are favored to win, with a probability of around 0.7.
+
+## visualization
+
+```{r}
+library(ggplot2)
+dflog <- tidy(log_model)
+
+dflog|>
+  filter(term != "(Intercept)")|>
+  ggplot(aes(x = term,
+             y = estimate,
+             color = term))+
+  geom_count()+
+  geom_hline(yintercept = 0.0, linetype = "dotted")+
+ guides(color = "none",
+        )+
+  labs(title = "Home team strength (base probability of winning at home) ",
+       x = "Team",
+       y = "",
+       subtitle = "Probability")
+  
 ```
 
 ## Model Critique
+
+When we compare our model predictions to the real world data of 2023, it does a somewhat good job of predicting. It labeled the Celtics as the best team, which seems so be pretty in line with what happened in the true season cause they lead the league in a lot of peoples' eyes. This is consistent with a lot of other teams toward the top of the league like the cavaliers and the sixers. Though it does seem to do well at giving the overview of the league, it might not be the best at predicting the outcome of a game.
+
+It doesn't take into account a lot of other factors that are important on game day that can affect the outcome. For example, it does not take into account injuries, player match ups, or even the fact that some teams are better at home than away. It just gives an overall at home advantage but we don't know how much that varies from team to team. Maybe a random effect or an interaction term could be added to the model to account for this. 
+
+I don't know how much value this would add for a coach or a player. It doesn't offer any significant details regarding how a team performed. It simplies gives outcomes rather than the information in between, which would be important for a coach to know. Perhaps it could be useful for seeing how well a specific team did against a different opponent your team performed well or poor against.
+
+I think for fans this might give some insight for understanding how their team is doing thoughout the season.
